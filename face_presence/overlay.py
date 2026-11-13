@@ -7,6 +7,7 @@ from collections.abc import Sequence
 import cv2
 import numpy as np
 
+from face_presence.formatting import format_duration
 from face_presence.tracking import Track
 
 _UNKNOWN_COLOR = (0, 200, 255)
@@ -17,16 +18,6 @@ _HUD_PANEL_COLOR = (20, 20, 20)
 _HUD_SCALE = 0.45
 _LABEL_SCALE = 0.5
 _TEXT_THICKNESS = 1
-
-
-def format_duration(seconds: float) -> str:
-    """Format a duration as MM:SS, or HH:MM:SS for sessions over an hour."""
-    total = max(0, int(seconds))
-    minutes, secs = divmod(total, 60)
-    hours, minutes = divmod(minutes, 60)
-    if hours:
-        return f"{hours:02d}:{minutes:02d}:{secs:02d}"
-    return f"{minutes:02d}:{secs:02d}"
 
 
 class OverlayRenderer:

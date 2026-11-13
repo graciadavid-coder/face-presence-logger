@@ -16,8 +16,9 @@ from face_presence.detection import FaceDetector
 from face_presence.identity import IdentityManager
 from face_presence.model_assets import SFACE, YUNET
 from face_presence.overlay import OverlayRenderer
+from face_presence.presence import PresenceManager
 from face_presence.recognition import FaceRecognizer, Gallery
-from face_presence.storage import Database
+from face_presence.storage import Database, StorageError
 from face_presence.tracking import IoUTracker
 
 logger = logging.getLogger(__name__)
@@ -62,6 +63,10 @@ def run_app(settings: Settings, camera_index: int | None = None) -> int:
     database = Database(settings.storage.db_path)
 
     try:
+        recovered = database.close_stale_sessions()
+        if recovered:
+            logger.info("Recovered %d stale presence session(s)", recovered)
+
         gallery = Gallery(database.load_persons())
         identity = IdentityManager(recognizer, gallery, database, settings.recognition)
 
@@ -69,6 +74,9 @@ def run_app(settings: Settings, camera_index: int | None = None) -> int:
         if camera_index is not None:
             camera_settings = replace(camera_settings, index=camera_index)
 
+        presence = PresenceManager(
+            database, camera_settings.index, settings.presence
+        )
         camera = open_camera(camera_settings)
         tracker = IoUTracker()
         overlay = OverlayRenderer(
@@ -118,6 +126,8 @@ def run_app(settings: Settings, camera_index: int | None = None) -> int:
                 else:
                     tracks = tracker.active(now)
 
+                presence.update(tracks, now)
+
                 fps = fps_meter.tick(now)
                 overlay.draw(
                     frame,
@@ -148,6 +158,10 @@ def run_app(settings: Settings, camera_index: int | None = None) -> int:
         except KeyboardInterrupt:
             logger.info("Interrupted.")
         finally:
+            try:
+                presence.close_all()
+            except StorageError as exc:
+                logger.error("Could not close presence sessions: %s", exc)
             camera.release()
             with suppress(cv2.error):
                 cv2.destroyAllWindows()

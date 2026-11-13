@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import argparse
 import logging
+from datetime import date
+from pathlib import Path
 
 from face_presence import __version__
 from face_presence.camera import CameraError, probe_cameras
@@ -64,6 +66,26 @@ def build_parser() -> argparse.ArgumentParser:
         help="Camera index to use instead of the value in config.toml.",
     )
 
+    export_parser = subparsers.add_parser(
+        "export", help="Export presence sessions to a CSV file."
+    )
+    export_parser.add_argument(
+        "--out",
+        type=Path,
+        default=None,
+        help="Output path (default: data/exports/sessions.csv).",
+    )
+    export_parser.add_argument(
+        "--since",
+        default=None,
+        help="Include sessions that started on or after this date (YYYY-MM-DD, UTC).",
+    )
+    export_parser.add_argument(
+        "--until",
+        default=None,
+        help="Include sessions that started on or before this date (YYYY-MM-DD, UTC).",
+    )
+
     return parser
 
 
@@ -86,6 +108,8 @@ def main(argv: list[str] | None = None) -> int:
                 print("--camera must be zero or greater.")
                 return 2
             return run_app(settings, camera_index=args.camera)
+        if args.command == "export":
+            return _run_export(settings, args.out, args.since, args.until)
     except (
         ConfigError,
         ModelError,
@@ -120,6 +144,41 @@ def _run_setup(settings: Settings) -> int:
 
     print("Setup complete.")
     return 0
+
+
+def _run_export(
+    settings: Settings,
+    output: Path | None,
+    since: str | None,
+    until: str | None,
+) -> int:
+    try:
+        since_iso = _parse_day(since, end_of_day=False)
+        until_iso = _parse_day(until, end_of_day=True)
+    except ValueError as exc:
+        print(str(exc))
+        return 2
+
+    target = output or settings.storage.export_dir / "sessions.csv"
+    database = Database(settings.storage.db_path)
+    try:
+        count = database.export_sessions(target, since_iso, until_iso)
+    finally:
+        database.close()
+
+    print(f"Exported {count} session(s) to {target}")
+    return 0
+
+
+def _parse_day(value: str | None, end_of_day: bool) -> str | None:
+    if value is None:
+        return None
+    try:
+        day = date.fromisoformat(value)
+    except ValueError as exc:
+        raise ValueError(f"Invalid date '{value}'. Use YYYY-MM-DD.") from exc
+    suffix = "T23:59:59Z" if end_of_day else "T00:00:00Z"
+    return f"{day.isoformat()}{suffix}"
 
 
 def _run_cameras(settings: Settings, max_index: int) -> int:

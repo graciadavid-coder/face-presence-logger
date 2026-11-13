@@ -1,5 +1,6 @@
 """SQLite storage tests."""
 
+import csv
 from pathlib import Path
 
 import numpy as np
@@ -65,3 +66,70 @@ def test_utc_now_uses_iso_format() -> None:
 
     assert value.endswith("Z")
     assert "T" in value
+
+
+def test_session_lifecycle_and_csv_export(tmp_path: Path) -> None:
+    database_path = tmp_path / "people.db"
+    csv_path = tmp_path / "exports" / "sessions.csv"
+
+    with Database(database_path) as database:
+        person = database.add_person(make_embedding(7))
+        session_id = database.start_session(
+            person.id, 0, "2026-11-01T10:00:00Z"
+        )
+        database.touch_session(session_id, "2026-11-01T10:00:30Z", 30.0)
+        database.close_session(
+            session_id,
+            person.id,
+            "2026-11-01T10:00:30Z",
+            30.0,
+            "timeout",
+        )
+
+        sessions = database.load_sessions()
+        assert len(sessions) == 1
+        assert sessions[0].person_label == "Person_001"
+        assert sessions[0].duration_s == 30.0
+        assert sessions[0].status == "closed"
+
+        assert database.export_sessions(csv_path) == 1
+
+    with csv_path.open(encoding="utf-8-sig", newline="") as handle:
+        rows = list(csv.reader(handle))
+
+    assert rows[0][0] == "session_id"
+    assert rows[1][0] == str(session_id)
+    assert rows[1][1] == "Person_001"
+    assert rows[1][7] == "00:30"
+    assert rows[1][8] == "closed"
+
+
+def test_close_stale_sessions_on_reopen(tmp_path: Path) -> None:
+    path = tmp_path / "people.db"
+
+    with Database(path) as database:
+        person = database.add_person(make_embedding(8))
+        session_id = database.start_session(
+            person.id, 0, "2026-11-01T10:00:00Z"
+        )
+        database.touch_session(session_id, "2026-11-01T10:00:05Z", 5.0)
+
+    with Database(path) as database:
+        assert database.close_stale_sessions() == 1
+        sessions = database.load_sessions()
+        assert sessions[0].status == "closed"
+        assert sessions[0].duration_s == 5.0
+        assert sessions[0].ended_at == "2026-11-01T10:00:05Z"
+        assert database.close_stale_sessions() == 0
+
+
+def test_load_sessions_filters_by_start_date(tmp_path: Path) -> None:
+    with Database(tmp_path / "people.db") as database:
+        person = database.add_person(make_embedding(9))
+        first = database.start_session(person.id, 0, "2026-11-01T10:00:00Z")
+        second = database.start_session(person.id, 1, "2026-11-02T10:00:00Z")
+
+        filtered = database.load_sessions(since="2026-11-02T00:00:00Z")
+
+    assert [session.id for session in filtered] == [second]
+    assert first not in [session.id for session in filtered]
