@@ -20,7 +20,10 @@ class Track:
     box: Box
     last_seen: float
     hits: int = 1
+    score: float = 0.0
+    face_row: np.ndarray | None = None
     landmarks: np.ndarray | None = None
+    person_id: int | None = None
     label: str | None = None
     timer_s: float | None = None
 
@@ -101,6 +104,8 @@ class IoUTracker:
             track.box = detection.box
             track.last_seen = now
             track.hits += 1
+            track.score = detection.score
+            track.face_row = detection.face_row
             track.landmarks = detection.landmarks
             matched_detections.add(detection_index)
 
@@ -112,6 +117,8 @@ class IoUTracker:
                     track_id=self._next_id,
                     box=detection.box,
                     last_seen=now,
+                    score=detection.score,
+                    face_row=detection.face_row,
                     landmarks=detection.landmarks,
                 )
             )

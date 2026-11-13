@@ -11,6 +11,8 @@ from face_presence.config import ConfigError, Settings, load_settings
 from face_presence.detection import DetectionError
 from face_presence.model_assets import ModelError, ensure_models
 from face_presence.pipeline import run_app
+from face_presence.recognition import RecognitionError
+from face_presence.storage import Database, StorageError
 
 logger = logging.getLogger(__name__)
 
@@ -35,7 +37,11 @@ def build_parser() -> argparse.ArgumentParser:
     subparsers = parser.add_subparsers(dest="command", required=True)
 
     subparsers.add_parser(
-        "setup", help="Download and verify the face models, then create runtime folders."
+        "setup",
+        help=(
+            "Download and verify the face models, create runtime folders "
+            "and initialize the database."
+        ),
     )
 
     cameras_parser = subparsers.add_parser(
@@ -80,7 +86,14 @@ def main(argv: list[str] | None = None) -> int:
                 print("--camera must be zero or greater.")
                 return 2
             return run_app(settings, camera_index=args.camera)
-    except (ConfigError, ModelError, CameraError, DetectionError) as exc:
+    except (
+        ConfigError,
+        ModelError,
+        CameraError,
+        DetectionError,
+        RecognitionError,
+        StorageError,
+    ) as exc:
         logger.error("%s", exc)
         return 1
 
@@ -100,6 +113,10 @@ def _run_setup(settings: Settings) -> int:
         settings.storage.log_dir,
     ):
         directory.mkdir(parents=True, exist_ok=True)
+
+    database = Database(settings.storage.db_path)
+    database.close()
+    print(f"Database ready: {settings.storage.db_path}")
 
     print("Setup complete.")
     return 0

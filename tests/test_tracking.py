@@ -58,6 +58,8 @@ def test_tracker_keeps_identity_for_overlapping_detections() -> None:
     assert len(second) == 1
     assert second[0].track_id == track_id
     assert second[0].hits == 2
+    assert second[0].face_row is not None
+    assert second[0].score == pytest.approx(0.9)
 
 
 def test_tracker_creates_a_new_identity_for_a_distant_face() -> None:

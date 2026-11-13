@@ -32,6 +32,8 @@ def test_draw_adds_boxes_and_hud_without_changing_the_shape() -> None:
             [[20.0, 30.0], [40.0, 50.0], [60.0, 70.0], [80.0, 90.0], [90.0, 100.0]],
             dtype=np.float32,
         ),
+        person_id=1,
+        label="Person_001",
         timer_s=65.0,
     )
     renderer = OverlayRenderer("Test", show_fps=True, show_landmarks=True)

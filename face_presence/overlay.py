@@ -9,7 +9,8 @@ import numpy as np
 
 from face_presence.tracking import Track
 
-_TRACK_COLOR = (0, 200, 255)
+_UNKNOWN_COLOR = (0, 200, 255)
+_KNOWN_COLOR = (0, 190, 0)
 _LABEL_TEXT_COLOR = (20, 20, 20)
 _HUD_TEXT_COLOR = (240, 240, 240)
 _HUD_PANEL_COLOR = (20, 20, 20)
@@ -64,16 +65,19 @@ class OverlayRenderer:
         y = max(0, min(y, height - 1))
         x2 = max(0, min(x + box_width, width - 1))
         y2 = max(0, min(y + box_height, height - 1))
+        color = _KNOWN_COLOR if track.person_id is not None else _UNKNOWN_COLOR
 
-        cv2.rectangle(frame, (x, y), (x2, y2), _TRACK_COLOR, 2, cv2.LINE_AA)
-        self._draw_label(frame, track, x, y)
+        cv2.rectangle(frame, (x, y), (x2, y2), color, 2, cv2.LINE_AA)
+        self._draw_label(frame, track, x, y, color)
 
         if self.show_landmarks and track.landmarks is not None:
             for point in track.landmarks:
                 center = (int(round(float(point[0]))), int(round(float(point[1]))))
-                cv2.circle(frame, center, 2, _TRACK_COLOR, -1, cv2.LINE_AA)
+                cv2.circle(frame, center, 2, color, -1, cv2.LINE_AA)
 
-    def _draw_label(self, frame: np.ndarray, track: Track, x: int, y: int) -> None:
+    def _draw_label(
+        self, frame: np.ndarray, track: Track, x: int, y: int, color: tuple[int, int, int]
+    ) -> None:
         label = track.display_label
         if track.timer_s is not None:
             label = f"{label}  {format_duration(track.timer_s)}"
@@ -86,7 +90,7 @@ class OverlayRenderer:
         bottom = min(frame.shape[0] - 1, top + text_height + 10)
         right = min(frame.shape[1] - 1, x + text_width + 12)
 
-        cv2.rectangle(frame, (x, top), (right, bottom), _TRACK_COLOR, -1)
+        cv2.rectangle(frame, (x, top), (right, bottom), color, -1)
         cv2.putText(
             frame,
             label,
