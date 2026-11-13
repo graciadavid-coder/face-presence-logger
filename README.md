@@ -8,7 +8,7 @@ The runtime uses OpenCV's DNN module with two ONNX models from OpenCV Zoo. It do
 
 ## Project status
 
-The project is being built in milestones. This revision includes the configuration layer, verified model downloads, and camera discovery. The live detection pipeline, SQLite presence log, and CSV export are the next milestones. The commands documented below are functional today.
+The project is being built in milestones. This revision includes the configuration layer, verified model downloads, camera discovery, and a live preview with YuNet detection and IoU tracking. Face recognition, automatic enrollment, SQLite presence sessions, and CSV export are the next milestones. The commands documented below are functional today.
 
 ## How it works
 
@@ -103,7 +103,21 @@ The command probes camera indexes and prints the backend and resolution of each 
 index = 1
 ```
 
-The backend is selected automatically: DirectShow and Media Foundation on Windows, AVFoundation on macOS, and V4L2 on Linux. A specific backend can be forced with `[camera].backend`.
+The backend is selected automatically: Media Foundation with a DirectShow fallback on Windows, AVFoundation on macOS, and V4L2 on Linux. A specific backend can be forced with `[camera].backend`.
+
+## Run the live preview
+
+```bash
+python -m face_presence run
+```
+
+Override the camera index from `config.toml`:
+
+```bash
+python -m face_presence run --camera 1
+```
+
+The window draws a box and a temporary `Face NN` label for each tracked face, together with FPS, camera details, and the current detection interval. Press `q` or `Esc`, or close the window, to quit. Recognition and presence timers are not wired in yet; the preview does not create or modify the database, and frames stay in memory.
 
 ## Configuration
 
@@ -129,7 +143,11 @@ face-presence-logger/
 │  ├─ camera.py          # camera discovery and capture
 │  ├─ cli.py             # command line interface
 │  ├─ config.py          # TOML loading and validation
-│  └─ model_assets.py    # model download and checksum verification
+│  ├─ detection.py       # YuNet detection wrapper
+│  ├─ model_assets.py    # model download and checksum verification
+│  ├─ overlay.py         # boxes, labels and status panel
+│  ├─ pipeline.py        # live preview loop
+│  └─ tracking.py        # IoU tracker
 ├─ tests/
 ├─ models/               # downloaded ONNX files (ignored by Git)
 └─ data/                 # database, exports, captures and logs (ignored by Git)
@@ -138,6 +156,7 @@ face-presence-logger/
 ## Data and privacy
 
 - `data/` is excluded from version control. It holds the SQLite database, CSV exports, manual captures, and logs.
+- The live preview processes frames in memory and does not write them to disk.
 - Camera frames are not written to disk automatically.
 - Face embeddings are biometric templates. Treat `data/presence.db` as sensitive and do not commit or share it.
 - Deleting `data/` removes all local records and allows the application to start from a clean state.
@@ -153,7 +172,7 @@ python -m ruff check .
 python -m pytest
 ```
 
-The test suite covers configuration, model verification, and camera backend selection without requiring a camera or the ONNX models. GitHub Actions runs lint and tests on Linux, Windows, and macOS.
+The test suite covers configuration, model verification, camera backend selection, detection scaling, IoU tracking, overlay rendering, and pipeline helpers without requiring a camera or the ONNX models. GitHub Actions runs lint and tests on Linux, Windows, and macOS.
 
 ## Models
 
