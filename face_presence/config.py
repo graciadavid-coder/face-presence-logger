@@ -59,8 +59,6 @@ class PresenceSettings:
 class StorageSettings:
     db_path: Path
     export_dir: Path
-    captures_dir: Path
-    log_dir: Path
 
 
 @dataclass(frozen=True)
@@ -141,10 +139,6 @@ def load_settings(path: str | Path = "config.toml") -> Settings:
     storage = StorageSettings(
         db_path=_path(storage_table, "db_path", "data/presence.db", "storage", base_dir),
         export_dir=_path(storage_table, "export_dir", "data/exports", "storage", base_dir),
-        captures_dir=_path(
-            storage_table, "captures_dir", "data/captures", "storage", base_dir
-        ),
-        log_dir=_path(storage_table, "log_dir", "data/logs", "storage", base_dir),
     )
 
     return Settings(

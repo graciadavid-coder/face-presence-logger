@@ -65,8 +65,6 @@ heartbeat_s = 2.5
 [storage]
 db_path = "state/presence.db"
 export_dir = "state/exports"
-captures_dir = "state/captures"
-log_dir = "state/logs"
 
 [ui]
 show_fps = false

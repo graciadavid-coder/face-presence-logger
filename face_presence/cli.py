@@ -133,8 +133,6 @@ def _run_setup(settings: Settings) -> int:
     for directory in (
         settings.storage.db_path.parent,
         settings.storage.export_dir,
-        settings.storage.captures_dir,
-        settings.storage.log_dir,
     ):
         directory.mkdir(parents=True, exist_ok=True)
 
