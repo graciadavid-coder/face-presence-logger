@@ -8,7 +8,7 @@ The runtime uses OpenCV's DNN module with two ONNX models from OpenCV Zoo. It do
 
 ## Project status
 
-The project is being built in milestones. This revision includes the configuration layer, verified model downloads, camera discovery, and a live preview with YuNet detection and IoU tracking. Face recognition, automatic enrollment, SQLite presence sessions, and CSV export are the next milestones. The commands documented below are functional today.
+The project is being built in milestones. This revision includes the configuration layer, verified model downloads, camera discovery, a live preview with YuNet detection and IoU tracking, SFace recognition, automatic enrollment, and a local SQLite gallery. Presence sessions and CSV export are the next milestones. The commands documented below are functional today.
 
 ## How it works
 
@@ -17,7 +17,7 @@ The project is being built in milestones. This revision includes the configurati
 3. **Recognition.** SFace aligns each face and produces a 128-dimensional embedding. The embedding is compared against the local gallery using cosine similarity.
 4. **Enrollment.** A face that does not match an existing person is confirmed across several frames and stored as `Person_001`, `Person_002`, and so on.
 5. **Presence.** Each confirmed person opens a session with a start time, last detection time, and duration. Sessions close after a configurable absence period.
-6. **Storage.** SQLite is the source of truth. Sessions can be exported to CSV for reporting.
+6. **Storage.** SQLite stores the known people and enrollment events. Presence sessions and CSV export are the next milestone.
 
 ## MVP scope
 
@@ -38,7 +38,7 @@ The project is being built in milestones. This revision includes the configurati
 
 ## Installation
 
-### Windows
+### Windows (PowerShell)
 
 ```powershell
 git clone https://github.com/graciadavid-coder/face-presence-logger.git
@@ -53,6 +53,23 @@ If PowerShell blocks the activation script, allow it for the current session:
 
 ```powershell
 Set-ExecutionPolicy -Scope Process Bypass
+```
+
+### Windows (Command Prompt)
+
+```bat
+git clone https://github.com/graciadavid-coder/face-presence-logger.git
+cd face-presence-logger
+python -m venv .venv
+.venv\Scripts\activate.bat
+python -m pip install --upgrade pip
+python -m pip install -r requirements.txt
+```
+
+Activation scripts are shell-specific: use `Activate.ps1` in PowerShell and `activate.bat` in Command Prompt. You can also skip activation entirely and call the environment interpreter directly:
+
+```bat
+.venv\Scripts\python.exe -m face_presence --help
 ```
 
 ### macOS
@@ -88,7 +105,7 @@ unset PYTHONPATH
 python -m face_presence setup
 ```
 
-The command downloads YuNet and SFace from a pinned OpenCV Zoo revision, verifies their SHA-256 digests, and creates the runtime folders under `data/`. The models are not committed to the repository.
+The command downloads YuNet and SFace from a pinned OpenCV Zoo revision, verifies their SHA-256 digests, creates the runtime folders under `data/`, and initializes the SQLite database. The models are not committed to the repository.
 
 ## Discover cameras
 
@@ -117,7 +134,25 @@ Override the camera index from `config.toml`:
 python -m face_presence run --camera 1
 ```
 
-The window draws a box and a temporary `Face NN` label for each tracked face, together with FPS, camera details, and the current detection interval. Press `q` or `Esc`, or close the window, to quit. Recognition and presence timers are not wired in yet; the preview does not create or modify the database, and frames stay in memory.
+If you prefer not to activate the virtual environment, call its interpreter directly:
+
+```bat
+.venv\Scripts\python.exe -m face_presence run
+```
+
+The window draws a box and a temporary `Face NN` label while a face is being confirmed. Once the identity is stable, the label becomes `Person_001`, `Person_002`, etc., and the box turns green. New faces are enrolled after several consistent detections. Press `q` or `Esc`, or close the window, to quit. Frames stay in memory; only the 128-dimensional template is written to SQLite.
+
+## Known people
+
+Enrollment is automatic. A new face is sampled across several frames, averaged into a single normalized embedding, and stored with a local identifier. No image is saved. The gallery is loaded from SQLite at startup, so people are recognized again after a restart.
+
+To reset the gallery, stop the application and delete the database:
+
+```bash
+rm data/presence.db
+```
+
+On Windows, delete `data\presence.db` and any `presence.db-wal` or `presence.db-shm` companions. The database is ignored by Git and should never be committed.
 
 ## Configuration
 
@@ -131,6 +166,9 @@ All settings live in `config.toml`. Relative paths are resolved from the directo
 | `detection` | `interval_frames` | Frames between detection passes |
 | `recognition` | `match_threshold` | Minimum cosine similarity for a match |
 | `recognition` | `match_margin` | Required lead over the second-best match |
+| `recognition` | `confirm_votes` | Consecutive matches required before assigning a person |
+| `recognition` | `enroll_samples` | Samples averaged when enrolling a new person |
+| `recognition` | `min_face_px` | Minimum face size eligible for recognition |
 | `presence` | `absence_timeout_s` | Seconds without a detection before a session closes |
 
 ## Project layout
@@ -144,9 +182,12 @@ face-presence-logger/
 │  ├─ cli.py             # command line interface
 │  ├─ config.py          # TOML loading and validation
 │  ├─ detection.py       # YuNet detection wrapper
+│  ├─ identity.py        # confirmation and enrollment state
 │  ├─ model_assets.py    # model download and checksum verification
 │  ├─ overlay.py         # boxes, labels and status panel
 │  ├─ pipeline.py        # live preview loop
+│  ├─ recognition.py     # SFace and in-memory gallery
+│  ├─ storage.py         # SQLite persistence
 │  └─ tracking.py        # IoU tracker
 ├─ tests/
 ├─ models/               # downloaded ONNX files (ignored by Git)
@@ -156,6 +197,7 @@ face-presence-logger/
 ## Data and privacy
 
 - `data/` is excluded from version control. It holds the SQLite database, CSV exports, manual captures, and logs.
+- The database stores one 128-dimensional embedding per person (512 bytes), never a face image.
 - The live preview processes frames in memory and does not write them to disk.
 - Camera frames are not written to disk automatically.
 - Face embeddings are biometric templates. Treat `data/presence.db` as sensitive and do not commit or share it.
@@ -172,7 +214,7 @@ python -m ruff check .
 python -m pytest
 ```
 
-The test suite covers configuration, model verification, camera backend selection, detection scaling, IoU tracking, overlay rendering, and pipeline helpers without requiring a camera or the ONNX models. GitHub Actions runs lint and tests on Linux, Windows, and macOS.
+The test suite covers configuration, model verification, camera backend selection, detection scaling, IoU tracking, overlay rendering, identity confirmation, enrollment, SQLite persistence, and pipeline helpers without requiring a camera or the ONNX models. GitHub Actions runs lint and tests on Linux, Windows, and macOS.
 
 ## Models
 
