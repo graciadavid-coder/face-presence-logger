@@ -22,6 +22,9 @@ adaptive = true
 [recognition]
 match_threshold = 0.38
 match_margin = 0.05
+# Checked before creating a new person; slightly more permissive to avoid duplicates.
+enroll_threshold = 0.36
+enroll_margin = 0.03
 confirm_votes = 2
 enroll_samples = 3
 min_face_px = 80

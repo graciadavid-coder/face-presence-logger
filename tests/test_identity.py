@@ -79,6 +79,8 @@ def default_settings() -> RecognitionSettings:
     return RecognitionSettings(
         match_threshold=0.38,
         match_margin=0.05,
+        enroll_threshold=0.36,
+        enroll_margin=0.03,
         confirm_votes=2,
         enroll_samples=3,
         min_face_px=80,
@@ -166,3 +168,32 @@ def test_confirmed_tracks_are_skipped() -> None:
     manager.update(np.zeros((240, 320, 3), dtype=np.uint8), [track], now=0.0)
 
     assert recognizer.calls == 0
+
+
+def test_borderline_face_is_reused_instead_of_enrolled() -> None:
+    base = make_vector(0)
+    similarity = 0.37
+    borderline = np.zeros(128, dtype=np.float32)
+    borderline[0] = similarity
+    borderline[1] = np.sqrt(1.0 - similarity**2)
+    person = PersonRecord(
+        1, "Person_001", base, "2026-01-01T00:00:00Z"
+    )
+    recognizer = FakeRecognizer(borderline)
+    database = FakeDatabase()
+    manager = IdentityManager(
+        recognizer,
+        Gallery([person]),
+        database,
+        default_settings(),
+    )
+    track = make_track()
+    frame = np.zeros((240, 320, 3), dtype=np.uint8)
+
+    manager.update(frame, [track], now=0.0)
+    manager.update(frame, [track], now=0.6)
+    manager.update(frame, [track], now=1.2)
+
+    assert track.person_id == 1
+    assert track.label == "Person_001"
+    assert database.records == []

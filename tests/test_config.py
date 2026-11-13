@@ -18,6 +18,8 @@ def test_empty_config_uses_defaults(tmp_path: Path) -> None:
     assert settings.camera.backend == "auto"
     assert settings.detection.input_width == 320
     assert settings.recognition.match_threshold == 0.38
+    assert settings.recognition.enroll_threshold == 0.36
+    assert settings.recognition.enroll_margin == 0.03
     assert settings.presence.absence_timeout_s == 5.0
     assert settings.models.directory == (tmp_path / "models").resolve()
     assert settings.storage.db_path == (tmp_path / "data" / "presence.db").resolve()
@@ -49,6 +51,8 @@ adaptive = false
 [recognition]
 match_threshold = 0.42
 match_margin = 0.08
+enroll_threshold = 0.34
+enroll_margin = 0.02
 confirm_votes = 3
 enroll_samples = 5
 min_face_px = 96
@@ -78,6 +82,7 @@ window_title = "Custom Window"
     assert settings.camera.index == 2
     assert settings.camera.backend == "dshow"
     assert settings.detection.adaptive is False
+    assert settings.recognition.enroll_threshold == 0.34
     assert settings.recognition.confirm_votes == 3
     assert settings.presence.heartbeat_s == 2.5
     assert settings.storage.export_dir == (tmp_path / "state/exports").resolve()

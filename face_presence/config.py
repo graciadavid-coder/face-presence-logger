@@ -41,6 +41,8 @@ class DetectionSettings:
 class RecognitionSettings:
     match_threshold: float = 0.38
     match_margin: float = 0.05
+    enroll_threshold: float = 0.36
+    enroll_margin: float = 0.03
     confirm_votes: int = 2
     enroll_samples: int = 3
     min_face_px: int = 80
@@ -112,6 +114,10 @@ def load_settings(path: str | Path = "config.toml") -> Settings:
     recognition = RecognitionSettings(
         match_threshold=_float(recognition_table, "match_threshold", 0.38, "recognition"),
         match_margin=_float(recognition_table, "match_margin", 0.05, "recognition"),
+        enroll_threshold=_float(
+            recognition_table, "enroll_threshold", 0.36, "recognition"
+        ),
+        enroll_margin=_float(recognition_table, "enroll_margin", 0.03, "recognition"),
         confirm_votes=_int(recognition_table, "confirm_votes", 2, "recognition"),
         enroll_samples=_int(recognition_table, "enroll_samples", 3, "recognition"),
         min_face_px=_int(recognition_table, "min_face_px", 80, "recognition"),
@@ -251,6 +257,10 @@ def _validate_recognition(recognition: RecognitionSettings) -> None:
         raise ConfigError("recognition.match_threshold must be between 0 and 1")
     if recognition.match_margin < 0.0:
         raise ConfigError("recognition.match_margin cannot be negative")
+    if not 0.0 <= recognition.enroll_threshold <= 1.0:
+        raise ConfigError("recognition.enroll_threshold must be between 0 and 1")
+    if recognition.enroll_margin < 0.0:
+        raise ConfigError("recognition.enroll_margin cannot be negative")
     if recognition.confirm_votes < 1:
         raise ConfigError("recognition.confirm_votes must be at least 1")
     if recognition.enroll_samples < 1:

@@ -112,13 +112,19 @@ class IdentityManager:
         embedding = average_embeddings(state.samples)
         match = self._gallery.match(
             embedding,
-            self._settings.match_threshold,
-            self._settings.match_margin,
+            self._settings.enroll_threshold,
+            self._settings.enroll_margin,
+        )
+        logger.debug(
+            "Enrollment check: best=%s score=%.3f margin=%.3f",
+            match.person.label if match.person is not None else "none",
+            match.score,
+            match.margin,
         )
         if match.person is not None:
             self._assign(track, match.person)
             state.samples.clear()
-            logger.info("Recognized %s", match.person.label)
+            logger.info("Recognized %s during enrollment", match.person.label)
             return
 
         person = self._database.add_person(embedding)
