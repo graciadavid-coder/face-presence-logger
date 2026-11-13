@@ -2,13 +2,13 @@
 
 [![tests](https://github.com/graciadavid-coder/face-presence-logger/actions/workflows/tests.yml/badge.svg)](https://github.com/graciadavid-coder/face-presence-logger/actions/workflows/tests.yml)
 
-Face Presence Logger is a lightweight, CPU-only face recognition and presence logging application for a single camera. It is designed to detect faces in a video stream, assign a local identifier to each new person, recognize returning people, and record how long each person stays in view.
+Face Presence Logger is a lightweight, CPU-only face recognition and presence logging application for a single camera. It detects faces in a video stream, assigns a local identifier to each new person, recognizes returning people, and records how long each person stays in view.
 
 The runtime uses OpenCV's DNN module with two ONNX models from OpenCV Zoo. It does not require a GPU, a deep-learning framework, or a cloud service.
 
 ## Project status
 
-The project is being built in milestones. This revision includes the configuration layer, verified model downloads, camera discovery, a live preview with YuNet detection and IoU tracking, SFace recognition, automatic enrollment, and a local SQLite gallery. Presence sessions and CSV export are the next milestones. The commands documented below are functional today.
+The MVP is feature-complete: configuration, verified model downloads, camera discovery, a live preview with YuNet detection and IoU tracking, SFace recognition, automatic enrollment, SQLite presence sessions, live timers, heartbeat and recovery, and CSV export. The remaining work is final polish and release checks.
 
 ## How it works
 
@@ -16,8 +16,8 @@ The project is being built in milestones. This revision includes the configurati
 2. **Tracking.** A lightweight IoU tracker follows each face between detection passes.
 3. **Recognition.** SFace aligns each face and produces a 128-dimensional embedding. The embedding is compared against the local gallery using cosine similarity.
 4. **Enrollment.** A face that does not match an existing person is confirmed across several frames and stored as `Person_001`, `Person_002`, and so on.
-5. **Presence.** Each confirmed person opens a session with a start time, last detection time, and duration. Sessions close after a configurable absence period.
-6. **Storage.** SQLite stores the known people and enrollment events. Presence sessions and CSV export are the next milestone.
+5. **Presence.** Each confirmed person opens a session with a start time, last detection time, and duration. A heartbeat updates SQLite while the person is visible, and the session closes after a configurable absence period.
+6. **Storage.** SQLite stores known people, sessions, and lifecycle events. Sessions can be exported to CSV for reporting.
 
 ## MVP scope
 
@@ -140,11 +140,13 @@ If you prefer not to activate the virtual environment, call its interpreter dire
 .venv\Scripts\python.exe -m face_presence run
 ```
 
-The window draws a box and a temporary `Face NN` label while a face is being confirmed. Once the identity is stable, the label becomes `Person_001`, `Person_002`, etc., and the box turns green. New faces are enrolled after several consistent detections. Press `q` or `Esc`, or close the window, to quit. Frames stay in memory; only the 128-dimensional template is written to SQLite.
+The window draws a box and a temporary `Face NN` label while a face is being confirmed. Once the identity is stable, the label becomes `Person_001`, `Person_002`, etc., the box turns green, and a live session timer starts. New faces are enrolled after several consistent detections. Press `q` or `Esc`, or close the window, to quit. Frames stay in memory; only the embedding and session metadata are written to SQLite.
 
 ## Known people
 
 Enrollment is automatic. A new face is sampled across several frames, averaged into a single normalized embedding, and stored with a local identifier. No image is saved. The gallery is loaded from SQLite at startup, so people are recognized again after a restart.
+
+Before creating a new person, the averaged embedding is checked against the gallery with a slightly more permissive threshold than normal recognition. This reduces duplicate enrollments when the same person appears under a different angle or lighting. Both thresholds are configurable in `config.toml`.
 
 To reset the gallery, stop the application and delete the database:
 
@@ -153,6 +155,24 @@ rm data/presence.db
 ```
 
 On Windows, delete `data\presence.db` and any `presence.db-wal` or `presence.db-shm` companions. The database is ignored by Git and should never be committed.
+
+## Presence sessions and exports
+
+A session starts when a person is confirmed and ends after `presence.absence_timeout_s` seconds without detections. `started_at` is the first confirmation, `last_seen_at` is the last detection, and `duration_s` is the observed span between them; the absence grace period is not added to the duration. Active sessions are updated with a heartbeat every `presence.heartbeat_s` seconds. If the process stops abruptly, the next startup closes stale sessions using their last heartbeat.
+
+Export sessions to CSV:
+
+```bash
+python -m face_presence export --out data/exports/sessions.csv
+```
+
+Filter by start date (UTC):
+
+```bash
+python -m face_presence export --since 2026-11-01 --until 2026-11-30
+```
+
+The CSV is written with a UTF-8 BOM for Excel compatibility. Columns: `session_id`, `person_label`, `camera_index`, `started_at_utc`, `last_seen_at_utc`, `ended_at_utc`, `duration_seconds`, `duration_hhmmss`, and `status`. Exports are ignored by Git.
 
 ## Configuration
 
@@ -166,10 +186,13 @@ All settings live in `config.toml`. Relative paths are resolved from the directo
 | `detection` | `interval_frames` | Frames between detection passes |
 | `recognition` | `match_threshold` | Minimum cosine similarity for a match |
 | `recognition` | `match_margin` | Required lead over the second-best match |
+| `recognition` | `enroll_threshold` | Similarity used to detect a duplicate before enrollment |
+| `recognition` | `enroll_margin` | Margin used by the duplicate check |
 | `recognition` | `confirm_votes` | Consecutive matches required before assigning a person |
 | `recognition` | `enroll_samples` | Samples averaged when enrolling a new person |
 | `recognition` | `min_face_px` | Minimum face size eligible for recognition |
 | `presence` | `absence_timeout_s` | Seconds without a detection before a session closes |
+| `presence` | `heartbeat_s` | Seconds between database heartbeats for active sessions |
 
 ## Project layout
 
@@ -182,13 +205,18 @@ face-presence-logger/
 │  ├─ cli.py             # command line interface
 │  ├─ config.py          # TOML loading and validation
 │  ├─ detection.py       # YuNet detection wrapper
+│  ├─ formatting.py      # shared duration formatting
 │  ├─ identity.py        # confirmation and enrollment state
 │  ├─ model_assets.py    # model download and checksum verification
 │  ├─ overlay.py         # boxes, labels and status panel
 │  ├─ pipeline.py        # live preview loop
+│  ├─ presence.py        # sessions, timers and heartbeats
 │  ├─ recognition.py     # SFace and in-memory gallery
-│  ├─ storage.py         # SQLite persistence
+│  ├─ storage.py         # SQLite persistence and CSV export
 │  └─ tracking.py        # IoU tracker
+├─ scripts/
+│  ├─ check_repo_hygiene.py
+│  └─ pre-commit
 ├─ tests/
 ├─ models/               # downloaded ONNX files (ignored by Git)
 └─ data/                 # database, exports, captures and logs (ignored by Git)
@@ -198,9 +226,11 @@ face-presence-logger/
 
 - `data/` is excluded from version control. It holds the SQLite database, CSV exports, manual captures, and logs.
 - The database stores one 128-dimensional embedding per person (512 bytes), never a face image.
+- Sessions and CSV exports contain timestamps and session durations, never images or embeddings.
 - The live preview processes frames in memory and does not write them to disk.
 - Camera frames are not written to disk automatically.
 - Face embeddings are biometric templates. Treat `data/presence.db` as sensitive and do not commit or share it.
+- The repository ships a hygiene checker and a pre-commit hook template that block runtime databases, model files, captured media, and exports from entering Git.
 - Deleting `data/` removes all local records and allows the application to start from a clean state.
 - No data leaves the machine. There is no telemetry and no cloud dependency at runtime.
 
@@ -212,9 +242,21 @@ Use the application only where you have the right to process images of the peopl
 python -m pip install -r requirements-dev.txt
 python -m ruff check .
 python -m pytest
+python scripts/check_repo_hygiene.py
 ```
 
-The test suite covers configuration, model verification, camera backend selection, detection scaling, IoU tracking, overlay rendering, identity confirmation, enrollment, SQLite persistence, and pipeline helpers without requiring a camera or the ONNX models. GitHub Actions runs lint and tests on Linux, Windows, and macOS.
+Install the local pre-commit hook so the hygiene check runs before every commit:
+
+```bash
+# macOS / Linux
+cp scripts/pre-commit .git/hooks/pre-commit
+chmod +x .git/hooks/pre-commit
+
+# Windows
+copy scripts\pre-commit .git\hooks\pre-commit
+```
+
+The test suite covers configuration, model verification, camera backend selection, detection scaling, IoU tracking, overlay rendering, identity confirmation, duplicate protection, enrollment, SQLite persistence, presence sessions, CSV export, repository hygiene, and pipeline helpers without requiring a camera or the ONNX models. GitHub Actions runs lint, tests, and the hygiene check on Linux, Windows, and macOS.
 
 ## Models
 
