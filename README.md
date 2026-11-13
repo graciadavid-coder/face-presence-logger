@@ -55,6 +55,7 @@ flowchart LR
 
 - CPU-only detection and recognition.
 - Automatic enrollment with local identifiers.
+- Safe label management with list, rename and confirmed deletion.
 - Presence sessions with entry time, last detection, and duration.
 - SQLite storage and CSV export.
 - Live overlay with face boxes, identifiers, and timers.
@@ -189,6 +190,9 @@ face-presence-logger run
 | `python -m face_presence cameras` | List cameras, backends, and resolutions |
 | `python -m face_presence run` | Start the live preview |
 | `python -m face_presence export` | Export sessions to CSV |
+| `python -m face_presence persons list` | List registered people |
+| `python -m face_presence persons rename <id\|label> <new>` | Rename a person |
+| `python -m face_presence persons delete <id\|label> --yes` | Delete a person and their sessions |
 | `python -m face_presence --help` | Show the full command line help |
 
 ## Known people
@@ -204,6 +208,37 @@ rm data/presence.db
 ```
 
 On Windows, delete `data\presence.db` and any `presence.db-wal` or `presence.db-shm` companions. The database is ignored by Git and should never be committed.
+
+## Managing labels
+
+The `persons` command is the supported way to inspect and update enrolled people without editing SQLite manually. It never prints embeddings.
+
+```bash
+python -m face_presence persons list
+python -m face_presence persons rename Person_001 "David"
+python -m face_presence persons rename 1 "David"
+python -m face_presence persons delete Person_002 --yes
+```
+
+Labels are validated before they are written:
+
+- 1 to 32 characters.
+- ASCII letters, digits, spaces, dots, underscores, apostrophes, or hyphens.
+- The first character must be a letter or digit.
+- A label cannot contain only digits.
+- Labels matching `Person_NNN` are reserved for automatic enrollment.
+- Accented characters are rejected because OpenCV's overlay font does not render them reliably.
+
+Safety rules:
+
+- Stop the live preview before renaming or deleting. The running process keeps the gallery in memory, so it does not see changes until it restarts.
+- Deletion is permanent: it also removes that person's sessions. The command refuses to delete without `--yes`.
+- Renaming changes the label in future exports, including sessions recorded before the rename. CSV files already written are not modified.
+- Deleting a person does not remove CSV files that were exported earlier; remove those separately if needed.
+- Labels are case-insensitively unique. `David` and `david` cannot coexist.
+- `persons list` is read-only and can run while the preview is open.
+
+The database is still a local SQLite file. The command provides validation and confirmation, not encryption or user authentication.
 
 ## Presence sessions and exports
 
@@ -282,6 +317,7 @@ face-presence-logger/
 │  ├─ identity.py        # confirmation and enrollment state
 │  ├─ model_assets.py    # model download and checksum verification
 │  ├─ overlay.py         # boxes, labels and status panel
+│  ├─ persons.py         # label validation
 │  ├─ pipeline.py        # live preview loop
 │  ├─ presence.py        # sessions, timers and heartbeats
 │  ├─ recognition.py     # SFace and in-memory gallery
@@ -300,6 +336,10 @@ face-presence-logger/
 - `data/` is excluded from version control. It holds the SQLite database and CSV exports.
 - The database stores one 128-dimensional embedding per person (512 bytes), never a face image.
 - Sessions and CSV exports contain timestamps and session durations, never images or embeddings.
+- The `persons` command lists labels and session counts without printing embeddings.
+- **The database is not encrypted.** Anyone with access to your operating-system account and the project folder can read, copy, or modify `data/presence.db`. Use full-disk encryption and restrictive folder permissions if the machine is shared.
+- The application has no login or multi-user authorization; the operating-system account is the access boundary.
+- Do not share the working directory as a ZIP. Distribute the project through Git or `git archive`, which exclude `data/`.
 - The live preview processes frames in memory and does not write them to disk.
 - The application never writes camera frames to disk.
 - Face embeddings are biometric templates. Treat `data/presence.db` as sensitive and do not commit or share it.
@@ -323,6 +363,7 @@ Use the application only where you have the right to process images of the peopl
 - Recognition works best with visible, reasonably sized frontal faces and stable lighting.
 - One embedding is stored per person. Large appearance changes may require a new enrollment.
 - A single camera is processed per run.
+- The local database is unencrypted and has no authentication; it is intended for a single-user workstation.
 - Thresholds are a trade-off: lower values accept more matches but can merge different people; higher values reduce false matches but can create duplicate identities.
 
 ## Troubleshooting
@@ -395,7 +436,7 @@ chmod +x .git/hooks/pre-commit
 copy scripts\pre-commit .git\hooks\pre-commit
 ```
 
-The test suite covers configuration, model verification, camera backend selection, detection scaling, IoU tracking, overlay rendering, identity confirmation, duplicate protection, enrollment, SQLite persistence, presence sessions, CSV export, repository hygiene, and pipeline helpers without requiring a camera or the ONNX models. GitHub Actions is configured to run lint, tests, and the hygiene check on Linux, Windows, and macOS.
+The test suite covers configuration, model verification, camera backend selection, detection scaling, IoU tracking, overlay rendering, identity confirmation, duplicate protection, enrollment, label validation, person management, SQLite persistence, presence sessions, CSV export, repository hygiene, and pipeline helpers without requiring a camera or the ONNX models. GitHub Actions is configured to run lint, tests, and the hygiene check on Linux, Windows, and macOS.
 
 ## Contributing
 
