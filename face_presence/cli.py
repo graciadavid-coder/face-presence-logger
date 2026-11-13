@@ -8,7 +8,9 @@ import logging
 from face_presence import __version__
 from face_presence.camera import CameraError, probe_cameras
 from face_presence.config import ConfigError, Settings, load_settings
+from face_presence.detection import DetectionError
 from face_presence.model_assets import ModelError, ensure_models
+from face_presence.pipeline import run_app
 
 logger = logging.getLogger(__name__)
 
@@ -46,6 +48,16 @@ def build_parser() -> argparse.ArgumentParser:
         help="Highest camera index to probe (default: 5).",
     )
 
+    run_parser = subparsers.add_parser(
+        "run", help="Open the camera and start the live preview."
+    )
+    run_parser.add_argument(
+        "--camera",
+        type=int,
+        default=None,
+        help="Camera index to use instead of the value in config.toml.",
+    )
+
     return parser
 
 
@@ -63,7 +75,12 @@ def main(argv: list[str] | None = None) -> int:
             return _run_setup(settings)
         if args.command == "cameras":
             return _run_cameras(settings, args.max_index)
-    except (ConfigError, ModelError, CameraError) as exc:
+        if args.command == "run":
+            if args.camera is not None and args.camera < 0:
+                print("--camera must be zero or greater.")
+                return 2
+            return run_app(settings, camera_index=args.camera)
+    except (ConfigError, ModelError, CameraError, DetectionError) as exc:
         logger.error("%s", exc)
         return 1
 
