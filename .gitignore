@@ -27,6 +27,23 @@ data/*
 models/*
 !models/.gitkeep
 
+# Never commit local databases, model binaries or biometric media
+*.db
+*.db-wal
+*.db-shm
+*.sqlite
+*.sqlite3
+*.onnx
+*.jpg
+*.jpeg
+*.png
+*.bmp
+*.webp
+*.mp4
+*.avi
+*.mov
+captures/
+
 # Editor and operating system files
 .idea/
 .vscode/

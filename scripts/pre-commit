@@ -1,0 +1,13 @@
+#!/bin/sh
+# Reject staged runtime data before it reaches Git.
+
+if command -v python >/dev/null 2>&1; then
+    PYTHON=python
+elif command -v py >/dev/null 2>&1; then
+    PYTHON=py
+else
+    echo "Python was not found; the pre-commit hygiene check cannot run." >&2
+    exit 1
+fi
+
+"$PYTHON" scripts/check_repo_hygiene.py --staged
