@@ -9,7 +9,7 @@ from face_presence.camera import backend_candidates, probe_cameras
 def test_windows_backend_order() -> None:
     names = [name for _, name in backend_candidates(platform="win32")]
 
-    assert names == ["dshow", "msmf", "default"]
+    assert names == ["msmf", "dshow", "default"]
 
 
 def test_macos_backend_order() -> None:

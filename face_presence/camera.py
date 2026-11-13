@@ -68,7 +68,7 @@ def backend_candidates(
         return [(_BACKENDS[backend], backend)]
 
     if platform.startswith("win"):
-        names = ["dshow", "msmf", "default"]
+        names = ["msmf", "dshow", "default"]
     elif platform == "darwin":
         names = ["avfoundation", "default"]
     else:
