@@ -1,0 +1,43 @@
+# Face Presence Logger configuration.
+# Relative paths are resolved from the directory that contains this file.
+
+[models]
+directory = "models"
+
+[camera]
+index = 0
+width = 640
+height = 480
+fps = 30
+# auto | default | dshow | msmf | avfoundation | v4l2
+backend = "auto"
+
+[detection]
+input_width = 320
+score_threshold = 0.85
+nms_threshold = 0.3
+interval_frames = 2
+adaptive = true
+
+[recognition]
+match_threshold = 0.38
+match_margin = 0.05
+confirm_votes = 2
+enroll_samples = 3
+min_face_px = 80
+interval_s = 0.5
+
+[presence]
+absence_timeout_s = 5.0
+heartbeat_s = 5.0
+
+[storage]
+db_path = "data/presence.db"
+export_dir = "data/exports"
+captures_dir = "data/captures"
+log_dir = "data/logs"
+
+[ui]
+show_fps = true
+show_landmarks = false
+window_title = "Face Presence Logger"

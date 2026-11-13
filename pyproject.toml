@@ -1,0 +1,47 @@
+[build-system]
+requires = ["setuptools>=77"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "face-presence-logger"
+version = "0.1.0"
+description = "CPU-only face recognition and presence logging with OpenCV."
+readme = "README.md"
+requires-python = ">=3.11"
+license = "MIT"
+license-files = ["LICENSE"]
+authors = [{ name = "David Gracia" }]
+keywords = ["computer-vision", "face-recognition", "opencv", "presence", "sqlite"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Scientific/Engineering :: Image Recognition",
+]
+dependencies = [
+    "numpy==2.2.6",
+    "opencv-python==4.12.0.88",
+]
+
+[project.urls]
+Homepage = "https://github.com/graciadavid-coder/face-presence-logger"
+Repository = "https://github.com/graciadavid-coder/face-presence-logger"
+
+[project.scripts]
+face-presence-logger = "face_presence.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["face_presence*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM"]
