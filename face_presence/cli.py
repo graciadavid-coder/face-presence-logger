@@ -12,6 +12,7 @@ from face_presence.camera import CameraError, probe_cameras
 from face_presence.config import ConfigError, Settings, load_settings
 from face_presence.detection import DetectionError
 from face_presence.model_assets import ModelError, ensure_models
+from face_presence.persons import validate_label
 from face_presence.pipeline import run_app
 from face_presence.recognition import RecognitionError
 from face_presence.storage import Database, StorageError
@@ -86,6 +87,30 @@ def build_parser() -> argparse.ArgumentParser:
         help="Include sessions that started on or before this date (YYYY-MM-DD, UTC).",
     )
 
+    persons_parser = subparsers.add_parser(
+        "persons", help="List, rename or delete registered people."
+    )
+    persons_subparsers = persons_parser.add_subparsers(
+        dest="persons_command", required=True
+    )
+    persons_subparsers.add_parser("list", help="List registered people.")
+
+    rename_parser = persons_subparsers.add_parser(
+        "rename", help="Rename a registered person."
+    )
+    rename_parser.add_argument("person", help="Person id or current label.")
+    rename_parser.add_argument("label", help="New label.")
+
+    delete_parser = persons_subparsers.add_parser(
+        "delete", help="Permanently delete a person and their sessions."
+    )
+    delete_parser.add_argument("person", help="Person id or current label.")
+    delete_parser.add_argument(
+        "--yes",
+        action="store_true",
+        help="Confirm permanent deletion.",
+    )
+
     return parser
 
 
@@ -110,6 +135,8 @@ def main(argv: list[str] | None = None) -> int:
             return run_app(settings, camera_index=args.camera)
         if args.command == "export":
             return _run_export(settings, args.out, args.since, args.until)
+        if args.command == "persons":
+            return _run_persons(settings, args)
     except (
         ConfigError,
         ModelError,
@@ -177,6 +204,98 @@ def _parse_day(value: str | None, end_of_day: bool) -> str | None:
         raise ValueError(f"Invalid date '{value}'. Use YYYY-MM-DD.") from exc
     suffix = "T23:59:59Z" if end_of_day else "T00:00:00Z"
     return f"{day.isoformat()}{suffix}"
+
+
+def _run_persons(settings: Settings, args: argparse.Namespace) -> int:
+    database = Database(settings.storage.db_path)
+    try:
+        if args.persons_command == "list":
+            return _persons_list(database)
+        if args.persons_command == "rename":
+            return _persons_rename(database, args.person, args.label)
+        if args.persons_command == "delete":
+            return _persons_delete(database, args.person, args.yes)
+    finally:
+        database.close()
+
+    print("Unknown persons command.")
+    return 2
+
+
+def _persons_list(database: Database) -> int:
+    people = database.list_persons()
+    if not people:
+        print("No people registered.")
+        return 0
+
+    print(
+        f"{'ID':<5}{'Label':<34}{'Created (UTC)':<22}"
+        f"{'Sessions':<10}Last seen (UTC)"
+    )
+    for person in people:
+        print(
+            f"{person.id:<5}{person.label:<34}{person.created_at:<22}"
+            f"{person.session_count:<10}{person.last_seen_at or '-'}"
+        )
+    return 0
+
+
+def _persons_rename(database: Database, token: str, value: str) -> int:
+    person = database.find_person(token)
+    if person is None:
+        print(f"No person found for '{token}'.")
+        return 1
+
+    if value.strip() == person.label:
+        print("Label unchanged.")
+        return 0
+
+    try:
+        label = validate_label(value)
+    except ValueError as exc:
+        print(str(exc))
+        return 2
+
+    if label == person.label:
+        print("Label unchanged.")
+        return 0
+
+    updated = database.rename_person(person.id, label)
+    if updated is None:
+        print("The person no longer exists.")
+        return 1
+
+    print(f"Renamed {person.label} -> {updated.label} (id {updated.id}).")
+    print(
+        "Restart the live preview to refresh the overlay. "
+        "Future exports will use the new label for past sessions too."
+    )
+    return 0
+
+
+def _persons_delete(database: Database, token: str, confirmed: bool) -> int:
+    person = database.find_person(token)
+    if person is None:
+        print(f"No person found for '{token}'.")
+        return 1
+
+    if not confirmed:
+        print(f"Refusing to delete {person.label} (id {person.id}).")
+        print(
+            f"This permanently removes the person and "
+            f"{person.session_count} session(s)."
+        )
+        print("Re-run with --yes to confirm.")
+        return 2
+
+    if not database.delete_person(person.id):
+        print("The person no longer exists.")
+        return 1
+
+    print("Deleted", person.label, f"(id {person.id})")
+    print(f"Removed {person.session_count} session(s).")
+    print("Restart the live preview if it is running.")
+    return 0
 
 
 def _run_cameras(settings: Settings, max_index: int) -> int:

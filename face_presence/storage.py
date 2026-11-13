@@ -53,6 +53,14 @@ CREATE INDEX IF NOT EXISTS idx_events_person
     ON events(person_id, created_at);
 """
 
+_PERSON_SUMMARY_SELECT = """
+SELECT p.id, p.label, p.created_at,
+       COUNT(s.id) AS session_count,
+       MAX(s.last_seen_at) AS last_seen_at
+FROM persons p
+LEFT JOIN sessions s ON s.person_id = p.id
+"""
+
 
 class StorageError(RuntimeError):
     """Raised when the local database cannot be read or written."""
@@ -64,6 +72,15 @@ class PersonRecord:
     label: str
     embedding: np.ndarray
     created_at: str
+
+
+@dataclass(frozen=True)
+class PersonSummary:
+    id: int
+    label: str
+    created_at: str
+    session_count: int
+    last_seen_at: str | None
 
 
 @dataclass(frozen=True)
@@ -136,6 +153,81 @@ class Database:
                 PersonRecord(row["id"], row["label"], vector, row["created_at"])
             )
         return people
+
+    def list_persons(self) -> list[PersonSummary]:
+        """Return every person with session counts, without exposing embeddings."""
+        query = (
+            f"{_PERSON_SUMMARY_SELECT} "
+            "GROUP BY p.id, p.label, p.created_at "
+            "ORDER BY p.id"
+        )
+        try:
+            rows = self._connection.execute(query).fetchall()
+        except sqlite3.Error as exc:
+            raise StorageError(f"Could not list people: {exc}") from exc
+        return [_summary_from_row(row) for row in rows]
+
+    def find_person(self, token: str) -> PersonSummary | None:
+        """Find a person by numeric id or case-insensitive label."""
+        token = token.strip()
+        if not token:
+            return None
+
+        if token.isdigit():
+            condition = "p.id = ?"
+            value: int | str = int(token)
+        else:
+            condition = "p.label = ? COLLATE NOCASE"
+            value = token
+
+        query = (
+            f"{_PERSON_SUMMARY_SELECT} "
+            f"WHERE {condition} "
+            "GROUP BY p.id, p.label, p.created_at"
+        )
+        try:
+            row = self._connection.execute(query, (value,)).fetchone()
+        except sqlite3.Error as exc:
+            raise StorageError(f"Could not find the person: {exc}") from exc
+        return _summary_from_row(row) if row is not None else None
+
+    def rename_person(self, person_id: int, label: str) -> PersonSummary | None:
+        """Rename a person, rejecting case-insensitive duplicates."""
+        try:
+            with self._connection:
+                existing = self._connection.execute(
+                    "SELECT id FROM persons "
+                    "WHERE label = ? COLLATE NOCASE AND id != ?",
+                    (label, person_id),
+                ).fetchone()
+                if existing is not None:
+                    raise StorageError(f"The label '{label}' is already in use")
+
+                cursor = self._connection.execute(
+                    "UPDATE persons SET label = ? WHERE id = ?",
+                    (label, person_id),
+                )
+        except StorageError:
+            raise
+        except sqlite3.IntegrityError as exc:
+            raise StorageError(f"The label '{label}' is already in use") from exc
+        except sqlite3.Error as exc:
+            raise StorageError(f"Could not rename the person: {exc}") from exc
+
+        if cursor.rowcount == 0:
+            return None
+        return self.find_person(str(person_id))
+
+    def delete_person(self, person_id: int) -> bool:
+        """Permanently delete a person and cascade their sessions."""
+        try:
+            with self._connection:
+                cursor = self._connection.execute(
+                    "DELETE FROM persons WHERE id = ?", (person_id,)
+                )
+        except sqlite3.Error as exc:
+            raise StorageError(f"Could not delete the person: {exc}") from exc
+        return cursor.rowcount > 0
 
     def add_person(self, embedding: np.ndarray) -> PersonRecord:
         """Store a normalized face embedding and return the new person record."""
@@ -374,3 +466,13 @@ def _normalize_embedding(embedding: np.ndarray) -> np.ndarray:
 
 def _parse_utc(value: str) -> datetime:
     return datetime.fromisoformat(value.replace("Z", "+00:00"))
+
+
+def _summary_from_row(row: sqlite3.Row) -> PersonSummary:
+    return PersonSummary(
+        id=row["id"],
+        label=row["label"],
+        created_at=row["created_at"],
+        session_count=int(row["session_count"]),
+        last_seen_at=row["last_seen_at"],
+    )

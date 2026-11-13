@@ -133,3 +133,55 @@ def test_load_sessions_filters_by_start_date(tmp_path: Path) -> None:
 
     assert [session.id for session in filtered] == [second]
     assert first not in [session.id for session in filtered]
+
+
+def test_list_and_find_people(tmp_path: Path) -> None:
+    with Database(tmp_path / "people.db") as database:
+        first = database.add_person(make_embedding(10))
+        second = database.add_person(make_embedding(11))
+        session_id = database.start_session(
+            first.id, 0, "2026-11-01T10:00:00Z"
+        )
+        database.touch_session(session_id, "2026-11-01T10:00:05Z", 5.0)
+
+        people = database.list_persons()
+
+        assert [person.id for person in people] == [first.id, second.id]
+        assert people[0].session_count == 1
+        assert people[0].last_seen_at == "2026-11-01T10:00:05Z"
+        assert people[1].session_count == 0
+        assert people[1].last_seen_at is None
+
+        assert database.find_person(str(first.id)).label == "Person_001"
+        assert database.find_person("Person_001").id == first.id
+        assert database.find_person("person_001").id == first.id
+        assert database.find_person("missing") is None
+
+
+def test_rename_person_rejects_case_insensitive_duplicates(tmp_path: Path) -> None:
+    with Database(tmp_path / "people.db") as database:
+        first = database.add_person(make_embedding(12))
+        second = database.add_person(make_embedding(13))
+
+        renamed = database.rename_person(first.id, "David")
+
+        assert renamed is not None
+        assert renamed.label == "David"
+        assert database.find_person("Person_001") is None
+        assert database.find_person("david").id == first.id
+
+        with pytest.raises(StorageError, match="already in use"):
+            database.rename_person(second.id, "david")
+
+        assert database.rename_person(999, "Nobody") is None
+
+
+def test_delete_person_cascades_sessions(tmp_path: Path) -> None:
+    with Database(tmp_path / "people.db") as database:
+        person = database.add_person(make_embedding(14))
+        database.start_session(person.id, 0, "2026-11-01T10:00:00Z")
+
+        assert database.delete_person(person.id)
+        assert database.load_persons() == []
+        assert database.load_sessions() == []
+        assert not database.delete_person(person.id)
